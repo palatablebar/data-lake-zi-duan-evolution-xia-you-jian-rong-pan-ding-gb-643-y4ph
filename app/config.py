@@ -34,6 +34,11 @@ DEFAULT_NEW = "schema_v2026_09.sql"
 BASE_OLD = "schema_v2026_03.sql"
 DEFAULT_REFS = "refs_downstream.json"
 EXTRA_METADATA = "metadata_extra.json"
+DEFAULT_ACCESS = "access_grants.json"
+
+# 授权裁定：页面与导出是同一字段身份的两个出口，结论必须一致
+ACCESS_CHANNELS = ("page", "export")
+ACCESS_VERDICTS = ("RETAIN", "REVIEW", "BLOCK")
 
 ALLOWED_SUFFIX = {".sql", ".json"}
 SAMPLE_NAME_RE = re.compile(r"^[A-Za-z0-9_.\-]+$")

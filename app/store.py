@@ -56,6 +56,22 @@ CREATE TABLE IF NOT EXISTS kv (
     k TEXT PRIMARY KEY,
     v TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS access_runs (
+    run_id         TEXT PRIMARY KEY,
+    batch_key      TEXT NOT NULL UNIQUE,
+    base_run_id    TEXT,
+    input_sha256   TEXT NOT NULL,
+    ruleset        TEXT NOT NULL,
+    created_at     TEXT NOT NULL,
+    summary_json   TEXT NOT NULL,
+    payload_json   TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS access_published (
+    id          INTEGER PRIMARY KEY CHECK (id = 1),
+    run_id      TEXT NOT NULL,
+    published_at TEXT NOT NULL,
+    payload_json TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_quarantine_schema ON quarantine(schema_id);
 """
 
@@ -83,7 +99,8 @@ def reset() -> None:
     """测试与重建用：清空全部业务表。"""
     with _LOCK, _connect() as conn:
         conn.executescript(SCHEMA)
-        for table in ("snapshots", "runs", "quarantine", "kv"):
+        for table in ("snapshots", "runs", "quarantine", "kv",
+                      "access_runs", "access_published"):
             conn.execute(f"DELETE FROM {table}")
 
 
@@ -272,3 +289,80 @@ def get_kv(key: str, default=None):
     with _LOCK, _connect() as conn:
         row = conn.execute("SELECT v FROM kv WHERE k=?", (key,)).fetchone()
     return _loads(row["v"]) if row else default
+
+
+# ---------- 授权裁定 ----------
+
+def save_access_run(run: dict) -> None:
+    with _LOCK, _connect() as conn:
+        conn.execute(
+            """INSERT INTO access_runs (run_id, batch_key, base_run_id, input_sha256,
+                   ruleset, created_at, summary_json, payload_json)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (
+                run["run_id"], run["batch_key"], run.get("base_run_id"),
+                run["input_sha256"], run["ruleset"], run["created_at"],
+                _dumps(run["summary"]), _dumps(run),
+            ),
+        )
+
+
+def find_access_run_by_key(batch_key: str) -> dict | None:
+    with _LOCK, _connect() as conn:
+        row = conn.execute(
+            "SELECT payload_json FROM access_runs WHERE batch_key=?", (batch_key,)
+        ).fetchone()
+    return _loads(row["payload_json"]) if row else None
+
+
+def access_run_by_id(run_id: str) -> dict | None:
+    with _LOCK, _connect() as conn:
+        row = conn.execute(
+            "SELECT payload_json FROM access_runs WHERE run_id=?", (run_id,)
+        ).fetchone()
+    return _loads(row["payload_json"]) if row else None
+
+
+def latest_access_run() -> dict | None:
+    with _LOCK, _connect() as conn:
+        row = conn.execute(
+            "SELECT payload_json FROM access_runs ORDER BY created_at DESC, rowid DESC LIMIT 1"
+        ).fetchone()
+    return _loads(row["payload_json"]) if row else None
+
+
+def count_access_runs() -> int:
+    with _LOCK, _connect() as conn:
+        row = conn.execute("SELECT COUNT(*) AS n FROM access_runs").fetchone()
+    return int(row["n"])
+
+
+def list_access_runs(limit: int = 30) -> list[dict]:
+    with _LOCK, _connect() as conn:
+        rows = conn.execute(
+            "SELECT summary_json FROM access_runs ORDER BY rowid DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [_loads(row["summary_json"]) for row in rows]
+
+
+def get_published_access() -> dict | None:
+    """当前生效的发布版；发布中断时这里始终保留上一份完整旧版。"""
+    with _LOCK, _connect() as conn:
+        row = conn.execute(
+            "SELECT payload_json FROM access_published WHERE id=1"
+        ).fetchone()
+    return _loads(row["payload_json"]) if row else None
+
+
+def set_published_access(run: dict) -> None:
+    with _LOCK, _connect() as conn:
+        conn.execute(
+            """INSERT INTO access_published (id, run_id, published_at, payload_json)
+               VALUES (1,?,?,?)
+               ON CONFLICT(id) DO UPDATE SET
+                   run_id=excluded.run_id,
+                   published_at=excluded.published_at,
+                   payload_json=excluded.payload_json""",
+            (run["run_id"], config.now_utc().isoformat(), _dumps(run)),
+        )

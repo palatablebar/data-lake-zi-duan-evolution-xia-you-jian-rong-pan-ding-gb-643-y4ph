@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}授权裁定 · fieldmap{% endblock %}
+{% block body %}
+{% set buckets = access_ledger.buckets or {} %}
+<section class="doc-section">
+  <h1>授权裁定</h1>
+  {% if empty %}
+  <p class="empty">还没有授权批次。</p>
+  {% else %}
+  <p class="lede">
+    受保护字段 <span class="mono">{{ adjudication.protected.label }}（{{ adjudication.protected.field_id }}）</span>
+    　消费方 <span class="mono">{{ access_ledger.total or 0 }}</span>
+    　保留 <span class="mono">{{ buckets.RETAIN or 0 }}</span>
+    　补审 <span class="mono">{{ buckets.REVIEW or 0 }}</span>
+    　阻断 <span class="mono">{{ buckets.BLOCK or 0 }}</span>
+  </p>
+  <p class="meta">
+    当前发布版 <span class="mono">{{ published.run_id if published else '—' }}</span>
+    　最新批次 <span class="mono">{{ run.run_id }}</span>
+    　页面与导出同身份同结论：
+    {% if access_ledger.channel_consistent %}<span class="st st-ok">一致</span>
+    {% else %}<span class="st st-bad">不一致</span>{% endif %}
+  </p>
+  <div class="actions">
+    <button type="button" data-action="access-adjudicate">重跑授权批次</button>
+    <button type="button" class="ghost" data-action="access-abort">模拟发布中断</button>
+    <a class="btn ghost" href="/api/export/access.csv">裁定 CSV</a>
+    <a class="btn ghost" href="/api/export/access-ledger.csv">授权账 CSV</a>
+    <a class="btn ghost" href="/api/access/published">发布版 JSON</a>
+    <input type="search" data-filter placeholder="筛选" aria-label="筛选">
+    <span class="flash" data-flash></span>
+  </div>
+
+  <div class="wrap-scroll">
+    <table>
+      <caption>逐消费方裁定<sup class="fn">1</sup></caption>
+      <thead>
+        <tr>
+          <th>消费方</th><th>字段身份</th><th>引用</th><th>结论</th>
+          <th>页面闸门</th><th>导出闸门</th><th>旧授权</th><th>原因</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in adjudication.decisions %}
+        <tr>
+          <td class="name">{{ item.consumer }}</td>
+          <td class="name" title="{{ item.field_id }}">{{ item.field_id }}</td>
+          <td class="name">{{ item.ref }}</td>
+          <td>
+            {% if item.verdict == 'RETAIN' %}<span class="st st-ok">保留访问</span>
+            {% elif item.verdict == 'REVIEW' %}<span class="st st-warn">补审后访问</span>
+            {% else %}<span class="st st-bad">阻断</span>{% endif %}
+          </td>
+          <td>
+            {% if item.channel_gates.page == 'ALLOW' %}<span class="st st-ok">放行</span>
+            {% elif item.channel_gates.page == 'PENDING_REVIEW' %}<span class="st st-warn">待补审</span>
+            {% else %}<span class="st st-bad">关闭</span>{% endif %}
+          </td>
+          <td>
+            {% if item.channel_gates.export == 'ALLOW' %}<span class="st st-ok">放行</span>
+            {% elif item.channel_gates.export == 'PENDING_REVIEW' %}<span class="st st-warn">待补审</span>
+            {% else %}<span class="st st-bad">关闭</span>{% endif %}
+          </td>
+          <td class="reason">
+            <span class="code">{{ item.grant_field_id or '—' }}</span>
+            {% if item.grant_field_id %}
+              {% if item.verified %}已核清{% else %}未核清{% endif %}
+            {% endif %}
+          </td>
+          <td class="reason">
+            {% for code in item.reasons %}<span class="code">{{ code|reason }}</span>{% if not loop.last %}；{% endif %}{% endfor %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+
+{% if not empty %}
+<section class="doc-section">
+  <h2><span class="clause">2</span>授权账与渠道对账</h2>
+  <dl class="ledger">
+    <div><dt>消费方总数</dt><dd>{{ access_ledger.total }}<span class="unit">个</span></dd></div>
+    <div><dt>保留</dt><dd>{{ buckets.RETAIN or 0 }}<span class="unit">个</span></dd></div>
+    <div><dt>补审</dt><dd>{{ buckets.REVIEW or 0 }}<span class="unit">个</span></dd></div>
+    <div><dt>阻断</dt><dd>{{ buckets.BLOCK or 0 }}<span class="unit">个</span></dd></div>
+    <div><dt>差额</dt><dd>{{ access_ledger.gap }}<span class="unit">个</span></dd></div>
+    <div><dt>账平</dt><dd>{% if access_ledger.balanced %}是{% else %}否{% endif %}</dd></div>
+  </dl>
+  <table>
+    <caption>页面 / 导出分渠道账<sup class="fn">2</sup></caption>
+    <thead>
+      <tr><th>渠道</th><th class="num">保留</th><th class="num">补审</th><th class="num">阻断</th><th>同身份同结论</th></tr>
+    </thead>
+    <tbody>
+      {% for row in access_ledger.channels %}
+      <tr>
+        <td class="name">{{ row.channel }}</td>
+        <td class="num">{{ row.buckets.RETAIN }}</td>
+        <td class="num">{{ row.buckets.REVIEW }}</td>
+        <td class="num">{{ row.buckets.BLOCK }}</td>
+        <td>{% if row.same_verdict %}<span class="st st-ok">一致</span>{% else %}<span class="st st-bad">不一致</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="doc-section">
+  <h2><span class="clause">3</span>授权批次历史</h2>
+  {% if runs %}
+  <table>
+    <thead><tr><th>批次</th><th>字段身份</th><th class="num">保留</th><th class="num">补审</th><th class="num">阻断</th><th>生成</th></tr></thead>
+    <tbody>
+      {% for item in runs %}
+      <tr>
+        <td class="name">{{ item.run_id }}</td>
+        <td class="name">{{ item.field_id }}</td>
+        <td class="num">{{ item.retain }}</td>
+        <td class="num">{{ item.review }}</td>
+        <td class="num">{{ item.block }}</td>
+        <td class="name">{{ item.created_at|day }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">还没有批次。</p>
+  {% endif %}
+</section>
+{% endif %}
+
+<aside class="notes">
+  <ol class="footnotes">
+    <li>同一 field_id 在页面与导出只给同一档结论；闸门按渠道落，结论不按渠道分叉。<a class="back" href="#main">↩</a></li>
+    <li>两份渠道账逐桶相等才算一致；旧授权未核清不得扩大渠道范围。<a class="back" href="#main">↩</a></li>
+    <li>发布中断保留上一份完整旧版；同一授权批次重跑只复用，不新增结论。<a class="back" href="#main">↩</a></li>
+  </ol>
+</aside>
+{% endblock %}

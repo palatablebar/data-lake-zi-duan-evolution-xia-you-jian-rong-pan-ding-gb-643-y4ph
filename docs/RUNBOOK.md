@@ -24,6 +24,7 @@ docker compose exec -T app python -m pytest -q
 4. `/impact` 看受影响节点、环、断链、单边登记。
 5. `/batches` 点「跑一次」，再点「陈旧提交」验证 409。
 6. `/spec` 导出迁移单与三份账目 CSV。
+7. `/access` 对客户标识（`field_id=3001`）逐消费方看保留 / 补审 / 阻断；点「模拟发布中断」，确认发布版仍指向上一份完整旧版。
 
 ## 4 重建数据库
 
@@ -55,6 +56,13 @@ docker compose up -d --build
 | GET | `/api/export/refs.csv` | 引用账 CSV |
 | GET | `/api/export/ledger.csv` | 账目 CSV |
 | GET | `/api/export/manifest.json` | 运行清单 |
+| POST | `/api/access/adjudicate` | 跑授权裁定（同批次键只复用），可带 `abort_publish` |
+| GET | `/api/access` | 最新授权批次与裁定明细 |
+| GET | `/api/access/batches` | 授权批次历史与当前发布版 |
+| POST | `/api/access/publish` | 重新发布；`abort=true` 模拟中断，保留旧版 |
+| GET | `/api/access/published` | 当前生效的发布版 |
+| GET | `/api/export/access.csv` | 授权裁定 CSV（与页面同结论） |
+| GET | `/api/export/access-ledger.csv` | 授权账与分渠道账 CSV |
 
 ## 6 失败处置
 
@@ -64,6 +72,8 @@ docker compose up -d --build
 | 400 `WINDOW_INVERTED` | 生效区间起点不早于终点 | 检查 `effective_from` / `effective_to` |
 | 400 `BAD_INPUT` | 文件名、参数或 JSON 结构不对 | 看返回的 `detail` |
 | 404 `NOT_FOUND` | 还没跑过批次 | 先在 `/batches` 点「跑一次」 |
+| 409 `CONFLICT` | 授权账不平/渠道不一致仍要发布，或无旧版可回退 | 先修授权登记重跑裁定；保留旧版场景下勿清空发布表 |
+| 发布中断 | `abort_publish=true` 或完整性校验未过 | 系统不覆盖发布版，`/api/access/published` 仍是上一份完整旧版 |
 
 ## 7 端口与并发
 

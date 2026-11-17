@@ -1,0 +1,70 @@
+{
+  "registered_at": "2026-11-10T06:00:00Z",
+  "protected_field": {
+    "field_id": "3001",
+    "table": "dim_user",
+    "column": "user_id",
+    "label": "客户标识",
+    "note": "月底迁入订单表 dim_order 承载，旧列仍被报表与结算读取，裁定按 field_id 对齐"
+  },
+  "channels": ["page", "export"],
+  "references": [
+    {"consumer": "dw.mv_order_daily", "kind": "view", "ref": "dim_user.user_id"},
+    {"consumer": "dw.mv_order_stat", "kind": "view", "ref": "dim_user.user_id"},
+    {"consumer": "dw.mv_pay_daily", "kind": "view", "ref": "dim_user.user_id"},
+    {"consumer": "dw.task_settle", "kind": "task", "ref": "dim_user.user_id"},
+    {"consumer": "dw.mv_user_dim", "kind": "view", "ref": "dim_user.user_id"},
+    {"consumer": "ads.rpt_pay_channel", "kind": "view", "ref": "dim_user.user_id"},
+    {"consumer": "dw.task_self", "kind": "task", "ref": "dim_user.user_id"}
+  ],
+  "grants": [
+    {
+      "consumer": "dw.mv_order_daily",
+      "field_id": "3001",
+      "granted_channels": ["page", "export"],
+      "verified": true,
+      "review_batch": "auth-2026-08",
+      "note": "报表历史授权，本季度已核清"
+    },
+    {
+      "consumer": "dw.task_settle",
+      "field_id": "3001",
+      "granted_channels": ["page", "export"],
+      "verified": true,
+      "review_batch": "auth-2026-08",
+      "note": "结算窗口依赖，已核清"
+    },
+    {
+      "consumer": "dw.mv_order_stat",
+      "field_id": "3001",
+      "granted_channels": ["page"],
+      "verified": false,
+      "review_batch": "auth-2026-06",
+      "note": "旧授权未核清，导出渠道不在已授权范围，未核清前不能扩面"
+    },
+    {
+      "consumer": "dw.mv_pay_daily",
+      "field_id": "3001",
+      "granted_channels": ["page", "export"],
+      "verified": false,
+      "review_batch": "auth-2026-06",
+      "note": "沿用旧授权但材料未核清"
+    },
+    {
+      "consumer": "ads.rpt_pay_channel",
+      "field_id": "3001",
+      "granted_channels": ["page", "export"],
+      "verified": false,
+      "review_batch": "auth-2026-05",
+      "note": "报表侧旧授权，待补审"
+    },
+    {
+      "consumer": "dw.mv_user_dim",
+      "field_id": "9999",
+      "granted_channels": ["page", "export"],
+      "verified": true,
+      "review_batch": "auth-2026-07",
+      "note": "授权登记的身份与客户标识现身份不一致，禁止按名字悄悄重绑"
+    }
+  ]
+}

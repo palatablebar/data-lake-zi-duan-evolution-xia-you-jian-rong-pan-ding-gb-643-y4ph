@@ -1,8 +1,8 @@
 # 深度登记 fieldmap
 
-- 规模：中型（7 个功能模块，76 个文件，65 条测试）
-- 核心规则：字段身份只认 `field_id`；类型兼容按 Decimal 值域 / 刻度 / 精确整数三件套判定；影响面 = 引用身份解析后的反向闭包
-- 使用者与工作流：湖仓数据管理员拿到上游新版元数据后，判定 60 个下游视图/任务是否还能跑，并出一份带条款号的迁移单
+- 规模：中型（8 个功能模块，84 个文件，80+ 条测试）
+- 核心规则：字段身份只认 `field_id`；类型兼容按 Decimal 值域 / 刻度 / 精确整数三件套判定；影响面 = 引用身份解析后的反向闭包；授权裁定按同一 `field_id` 给页面与导出同档结论
+- 使用者与工作流：湖仓数据管理员拿到上游新版元数据后，判定 60 个下游视图/任务是否还能跑，并出一份带条款号的迁移单；月底客户标识迁入订单表时，再逐消费方裁定旧授权保留、补审还是阻断
 
 ## 功能模块
 
@@ -15,6 +15,7 @@
 | M5 影响面 | 看受影响的下游节点、环、断链、单边登记 | GET /api/impact | `app/modules/m5_impact/handler.py` `app/modules/m5_impact/service.py` `app/modules/m5_impact/closure.py` `app/modules/m5_impact/cycle.py` `app/modules/m5_impact/broken.py` | `tests/test_m5_impact.py` |
 | M6 版本批次 | 跑批次、看历史、验陈旧拒绝与区间重叠 | POST /api/runs | `app/modules/m6_batches/handler.py` `app/modules/m6_batches/service.py` `app/modules/m6_batches/window.py` `app/modules/m6_batches/guard.py` `app/modules/m6_batches/history.py` | `tests/test_m6_batches.py` |
 | M7 迁移单 | 出带条款号的迁移单与三份账目 CSV | GET /api/export/spec.md | `app/modules/m7_migration/handler.py` `app/modules/m7_migration/service.py` `app/modules/m7_migration/spec_md.py` `app/modules/m7_migration/csv_out.py` `app/modules/m7_migration/ledger.py` | `tests/test_m7_migration.py` |
+| M8 授权裁定 | 逐消费方裁定保留/补审/阻断，页面与导出同结论，发布回退 | POST /api/access/adjudicate、`/access` | `app/modules/m8_access/handler.py` `app/modules/m8_access/service.py` `app/modules/m8_access/judge.py` `app/modules/m8_access/loader.py` `app/modules/m8_access/publish.py` `app/modules/m8_access/ledger.py` `app/modules/m8_access/csv_out.py` | `tests/test_m8_access.py` |
 
 ## 陷阱登记
 
@@ -30,6 +31,11 @@
 | TRAP-22 | 同一字段被连续改过两次名 | 只认最近一跳，最早的名字解析不到 | 跨版本改名链一路解析到底 | `app/modules/m4_mapping/rename.py` | `tests/test_m4_mapping.py::test_trap22_alias_chain_resolves_multi_hop` |
 | TRAP-25 | 两个版本生效区间重叠 | 取到哪版看运气 | 半开区间比较，重叠直接标记警告 | `app/modules/m6_batches/window.py` | `tests/test_m6_batches.py::test_trap25_overlap_flagged_but_adjacent_clean` |
 | TRAP-26 | 基于旧版本号提交 | 后提交无条件覆盖新结果 | 版本号乐观锁，基线落后即 409 | `app/modules/m6_batches/guard.py` | `tests/test_m6_batches.py::test_trap26_stale_submission_rejected` |
+| TRAP-27 | 旧授权未核清，沿用会让未授权者读到客户标识 | 未核清也按旧授权放行，渠道还越权扩面 | 未核清一律先补审，渠道缺口不自动扩面 | `app/modules/m8_access/judge.py` | `tests/test_m8_access.py::test_unverified_grant_is_review_not_retained` |
+| TRAP-28 | 授权登记的是旧身份，列名还在 | 按列名把授权悄悄重绑到新身份 | 只按 `field_id` 对齐，身份不一致直接阻断 | `app/modules/m8_access/judge.py` | `tests/test_m8_access.py::test_identity_mismatch_blocks_even_if_verified` |
+| TRAP-29 | 页面放行、导出对同一字段给不同结论 | 两个出口各判各的，结论互相矛盾 | 同一裁定驱动两个渠道闸门，分渠道账逐桶相等才一致 | `app/modules/m8_access/ledger.py` | `tests/test_m8_access.py::test_page_and_export_share_one_verdict_per_identity` |
+| TRAP-30 | 发布中断把上一份可用授权覆盖成半成品 | 失败发布直接写库，线上无旧版可回退 | 完整性不过不覆盖，始终保留上一份完整旧版 | `app/modules/m8_access/publish.py` | `tests/test_m8_access.py::test_publish_failure_never_overwrites_previous` |
+| TRAP-31 | 重跑同一授权批次产生新结论 | 每次裁定都新增行，结论漂移 | 批次键命中即复用，重跑不新增结论 | `app/modules/m8_access/service.py` | `tests/test_m8_access.py::test_rerun_same_batch_adds_no_new_conclusion` |
 
 ## 对账规则
 
@@ -37,6 +43,7 @@
 - 字段账：新版本 = 未变 + 改名 + 换类型 + 改必填 + 冲突 + 新增
 - 引用账：登记引用 = 可达 + 断链，其中可达 = 直接 + 经别名
 - 采信账：列定义行 = 接受字段 + 阻断行
+- 授权账：消费方总数 = 保留 + 补审 + 阻断；页面账与导出账逐桶相等
 - 页面上四账并列显示，差额不为 0 即判不平
 
 ## 已知不覆盖

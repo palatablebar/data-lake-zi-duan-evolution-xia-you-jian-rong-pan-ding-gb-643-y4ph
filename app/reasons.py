@@ -53,6 +53,16 @@ CODES: dict[str, tuple[str, str]] = {
     "COMPATIBLE": ("兼容", "info"),
     "COMPATIBLE_BY_MAPPING": ("加别名后兼容", "warn"),
     "BREAKING": ("破坏", "break"),
+    # M8 授权裁定
+    "ACCESS_RETAIN": ("保留访问", "info"),
+    "ACCESS_REVIEW": ("补审后访问", "warn"),
+    "ACCESS_BLOCK": ("阻断", "break"),
+    "GRANT_VERIFIED": ("旧授权已核清，按同一字段身份保留", "info"),
+    "GRANT_UNVERIFIED": ("旧授权未核清，补审前不扩大范围", "warn"),
+    "GRANT_CHANNEL_SCOPE": ("请求渠道超出已授权范围", "warn"),
+    "GRANT_MISSING": ("该字段身份没有授权登记", "break"),
+    "GRANT_ID_MISMATCH": ("授权身份与字段身份不一致，禁止按名重绑", "break"),
+    "ACCESS_PUBLISH_KEPT": ("发布中断，沿用上一份完整旧版", "warn"),
 }
 
 # 类型收窄细分，挂在明细里，不进码表

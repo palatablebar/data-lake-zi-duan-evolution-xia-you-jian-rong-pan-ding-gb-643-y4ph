@@ -31,6 +31,21 @@ const ACTIONS = {
     }
     return `比较完成 ${result.change}`;
   },
+
+  async 'access-adjudicate'() {
+    const result = await request('/api/access/adjudicate', {});
+    return result.reused
+      ? `命中已有授权批次 ${result.run_id}，未新增结论`
+      : `新授权批次 ${result.run_id}（保留 ${result.buckets.RETAIN} / 补审 ${result.buckets.REVIEW} / 阻断 ${result.buckets.BLOCK}）`;
+  },
+
+  async 'access-abort'() {
+    const result = await request('/api/access/adjudicate', { abort_publish: true });
+    const publish = result.publish || {};
+    return publish.kept_previous
+      ? `发布中断，保留旧版 ${publish.run_id}`
+      : `已发布 ${publish.run_id}`;
+  },
 };
 
 async function request(url, body) {
@@ -72,7 +87,7 @@ document.addEventListener('click', async (event) => {
   try {
     const message = await handler(button);
     flash(target, message || '完成', false);
-    if (name === 'run') {
+    if (name === 'run' || name === 'access-adjudicate' || name === 'access-abort') {
       setTimeout(() => window.location.reload(), 400);
     }
   } catch (error) {
